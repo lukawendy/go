@@ -2983,18 +2983,18 @@ const shutdownPollIntervalMax = 500 * time.Millisecond
 // Once Shutdown has been called on a server, it may not be reused;
 // future calls to methods such as Serve will return ErrServerClosed.
 func (srv *Server) Shutdown(ctx context.Context) error {
-	srv.inShutdown.Store(true)
+	srv.inShutdown.Store(true) // 设置服务器的inShutdown状态为true，表示服务器正在关闭过程中。这个状态可以阻止新的请求被接受。
 
-	srv.mu.Lock()
-	lnerr := srv.closeListenersLocked()
-	for _, f := range srv.onShutdown {
+	srv.mu.Lock()                       // 通过获取互斥锁来确保在关闭监听器和触发onShutdown回调时不会有并发修改。
+	lnerr := srv.closeListenersLocked() // 关闭所有监听器（比如TCP监听器），以停止接收新的连接。如果在关闭监听器时遇到错误，这个错误会被保存到lnerr变量中。
+	for _, f := range srv.onShutdown {  // 每个回调函数启动一个新的goroutine执行。这些回调是服务器关闭之前需要执行的清理或优雅关闭相关的操作。
 		go f()
 	}
 	srv.mu.Unlock()
-	srv.listenerGroup.Wait()
+	srv.listenerGroup.Wait() // 等待所有与监听器相关的goroutine完成
 
-	pollIntervalBase := time.Millisecond
-	nextPollInterval := func() time.Duration {
+	pollIntervalBase := time.Millisecond       //关闭空闲连接的轮询机制
+	nextPollInterval := func() time.Duration { //初始化一个轮询间隔，此间隔会在每次轮询后增加，并添加一定的随机性（10%抖动）以避免所有实例同时轮询的情况。
 		// Add 10% jitter.
 		interval := pollIntervalBase + time.Duration(rand.Intn(int(pollIntervalBase/10)))
 		// Double and clamp for next time.
@@ -3005,16 +3005,16 @@ func (srv *Server) Shutdown(ctx context.Context) error {
 		return interval
 	}
 
-	timer := time.NewTimer(nextPollInterval())
+	timer := time.NewTimer(nextPollInterval()) //创建一个定时器，用于控制轮询的间隔。
 	defer timer.Stop()
-	for {
-		if srv.closeIdleConns() {
+	for { // 在一个无限循环中，服务器会定期检查是否所有连接都已关闭。
+		if srv.closeIdleConns() { //如果srv.closeIdleConns()返回true，表示所有空闲连接都已经关闭，那么服务器关闭操作完成，方法返回可能在关闭监听器时遇到的错误lnerr。
 			return lnerr
 		}
 		select {
-		case <-ctx.Done():
+		case <-ctx.Done(): // 如果接收到上下文（ctx.Done()）的取消信号，表示外部请求服务器关闭，方法会返回上下文的错误ctx.Err()。
 			return ctx.Err()
-		case <-timer.C:
+		case <-timer.C: // 如果定时器触发，表示达到了下一次轮询的时间，它将重置定时器以等待下一次轮询。
 			timer.Reset(nextPollInterval())
 		}
 	}
