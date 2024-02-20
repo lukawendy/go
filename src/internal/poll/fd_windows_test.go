@@ -140,6 +140,7 @@ func TestWSASocketConflict(t *testing.T) {
 	if ov.HEvent == 0 {
 		t.Fatalf("could not create the event!")
 	}
+	defer syscall.CloseHandle(ov.HEvent)
 
 	if err = fd.WSAIoctl(
 		SIO_TCP_INFO,
@@ -160,10 +161,6 @@ func TestWSASocketConflict(t *testing.T) {
 		if res, err := syscall.WaitForSingleObject(ov.HEvent, syscall.INFINITE); res != 0 {
 			t.Fatalf("waiting for the completion of the overlapped IO failed: %v", err)
 		}
-	}
-
-	if err = syscall.CloseHandle(ov.HEvent); err != nil {
-		t.Fatalf("could not close the event handle: %v", err)
 	}
 }
 
