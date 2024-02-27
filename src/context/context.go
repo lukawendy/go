@@ -459,11 +459,14 @@ func (c *cancelCtx) Err() error {
 
 // propagateCancel arranges for child to be canceled when parent is.
 // It sets the parent context of cancelCtx.
+// 主要作用是设置取消传播机制，确保当父Context被取消时，子Context也会被取消。
+// parent Context：父Context，子Context需要监听这个父Context的取消信号。
+// child canceler：需要被取消的子对象，这里的child实际上是c自己或其它实现了canceler接口的Context。
 func (c *cancelCtx) propagateCancel(parent Context, child canceler) {
 	c.Context = parent
 
-	done := parent.Done()
-	if done == nil {
+	done := parent.Done() //检查父Context是否已设置取消
+	if done == nil {      // 返回nil，表示父Context永远不会被取消，因此直接返回。
 		return // parent is never canceled
 	}
 
